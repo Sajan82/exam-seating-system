@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Smart Exam Seating System</title>
+
+<!-- LIBRARIES -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<style>
+
+/* RESET */
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif;}
+
+/* BACKGROUND */
+body{
+  display:flex;
+  min-height:100vh;
+  background:linear-gradient(-45deg,#141e30,#243b55,#0f2027,#2c5364);
+  background-size:400% 400%;
+  animation:bg 10s ease infinite;
+  color:white;
+}
+@keyframes bg{
+  0%{background-position:0% 50%;}
+  50%{background-position:100% 50%;}
+  100%{background-position:0% 50%;}
+}
+
+/* SIDEBAR */
+.sidebar{
+  width:230px;
+  background:rgba(0,0,0,0.4);
+  backdrop-filter:blur(10px);
+  padding:20px;
+}
+.sidebar h2{text-align:center;margin-bottom:20px;}
+.sidebar button{
+  width:100%;
+  padding:10px;
+  margin:6px 0;
+  border:none;
+  border-radius:8px;
+  background:#00c6ff;
+  color:white;
+  cursor:pointer;
+  transition:.3s;
+}
+.sidebar button:hover{transform:scale(1.05);}
+
+/* MAIN */
+.main{flex:1;padding:20px;overflow:auto;}
+.card{
+  background:rgba(255,255,255,0.08);
+  backdrop-filter:blur(10px);
+  padding:15px;
+  border-radius:15px;
+  margin-bottom:15px;
+}
+
+/* INPUT */
+input{
+  padding:10px;
+  margin:5px;
+  border:none;
+  border-radius:8px;
+}
+
+/* GRID */
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(80px,1fr));
+  gap:10px;
+}
+
+/* SEAT */
+.seat{
+  height:60px;
+  border-radius:10px;
+  background:rgba(255,255,255,0.1);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transition:.3s;
+}
+.seat:hover{transform:scale(1.05);}
+
+/* STUDENT */
+.student{
+  padding:5px;
+  border-radius:6px;
+  font-size:12px;
+  cursor:grab;
+  background:#00f5a0;
+}
+.selected{outline:2px solid yellow;}
+
+/* PRINT */
+@media print{
+  body *{visibility:hidden;}
+  #printArea,#printArea *{visibility:visible;}
+  #printArea{
+    position:absolute;
+    left:0;top:0;width:100%;
+    background:white;color:black;
+  }
+  table{
+    width:100%;
+    border-collapse:collapse;
+    margin-bottom:20px;
+  }
+  td,th{
+    border:1px solid black;
+    padding:6px;
+    text-align:center;
+  }
+  .page-break{page-break-after:always;}
+  .header{text-align:center;margin-bottom:10px;}
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="sidebar">
+  <h2>Dashboard</h2>
+  <button onclick="generate()">Generate</button>
+  <button onclick="saveData()">Save</button>
+  <button onclick="loadData()">Load</button>
+  <button onclick="printTable()">Print</button>
+  <button onclick="exportPDF()">Export PDF</button>
+</div>
+
+<div class="main">
+
+<h1>Exam Seating Arrangement System</h1>
+
+<div class="card">
+  <input id="college" placeholder="Enter College Name">
+  <input id="subject" placeholder="Enter Subject"><br>
+  <input id="examDate" type="date"><br>
+
+  <input id="students" type="number" placeholder="Students">
+  <input id="rooms" type="number" placeholder="Rooms">
+  <input id="benches" type="number" placeholder="Seats/Room">
+  <input id="batches" placeholder="CSE,ECE">
+</div>
+
+<div id="output"></div>
+<div id="printArea" style="display:none;"></div>
+
+</div>
+
+<script>
+
+let selected=null;
+
+/* GENERATE */
+function generate(){
+  let total=+students.value;
+  let rooms=+document.getElementById("rooms").value;
+  let benches=+document.getElementById("benches").value;
+  let batches=document.getElementById("batches").value.split(",");
+
+  let arr=[], counters={};
+  batches.forEach(b=>counters[b.trim()]=1);
+
+  for(let i=0;i<total;i++){
+    let batch=batches[i%batches.length].trim();
+    let num=counters[batch]++;
+    arr.push(batch+String(num).padStart(3,'0'));
+  }
+
+  output.innerHTML="";
+  let index=0;
+
+  for(let r=1;r<=rooms;r++){
+    let room=document.createElement("div");
+    room.className="card";
+    room.innerHTML="<h3>Room "+r+"</h3>";
+
+    let grid=document.createElement("div");
+    grid.className="grid";
+
+    for(let i=0;i<benches;i++){
+      let seat=document.createElement("div");
+      seat.className="seat";
+      seat.ondrop=drop;
+      seat.ondragover=allowDrop;
+
+      if(index<arr.length){
+        let s=document.createElement("div");
+        s.className="student";
+        s.innerText=arr[index];
+        s.id="s"+index;
+        s.draggable=true;
+        s.ondragstart=drag;
+        s.onclick=()=>selectStudent(s);
+
+        seat.appendChild(s);
+        index++;
+      }
+
+      grid.appendChild(seat);
+    }
+
+    room.appendChild(grid);
+    output.appendChild(room);
+  }
+}
+
+/* DRAG */
+function allowDrop(e){e.preventDefault();}
+function drag(e){e.dataTransfer.setData("text",e.target.id);}
+function drop(e){
+  e.preventDefault();
+  let id=e.dataTransfer.getData("text");
+  let dragged=document.getElementById(id);
+  let target=e.target.closest(".seat");
+
+  if(!target)return;
+
+  if(target.children.length===0){
+    target.appendChild(dragged);
+  }else{
+    let existing=target.children[0];
+    let parent=dragged.parentNode;
+    parent.appendChild(existing);
+    target.appendChild(dragged);
+  }
+}
+
+/* CLICK SWAP */
+function selectStudent(el){
+  if(!selected){
+    selected=el;
+    el.classList.add("selected");
+  }else{
+    let p1=selected.parentNode;
+    let p2=el.parentNode;
+    p1.appendChild(el);
+    p2.appendChild(selected);
+    selected.classList.remove("selected");
+    selected=null;
+  }
+}
+
+/* SAVE LOAD */
+function saveData(){
+  localStorage.setItem("seatFinal",output.innerHTML);
+  alert("Saved!");
+}
+function loadData(){
+  let data=localStorage.getItem("seatFinal");
+  if(data){
+    output.innerHTML=data;
+    reattach();
+  }
+}
+function reattach(){
+  document.querySelectorAll(".student").forEach(el=>{
+    el.draggable=true;
+    el.ondragstart=drag;
+    el.onclick=()=>selectStudent(el);
+  });
+  document.querySelectorAll(".seat").forEach(el=>{
+    el.ondrop=drop;
+    el.ondragover=allowDrop;
+  });
+}
+
+/* PRINT TABLE */
+function printTable(){
+
+  let college=collegeInput();
+  let subjectVal=subjectInput();
+  let dateVal=dateInput();
+
+  let total=+students.value;
+  let roomsCount=+rooms.value;
+  let benchesCount=+benches.value;
+  let batches=document.getElementById("batches").value.split(",");
+
+  let arr=[], counters={};
+  batches.forEach(b=>counters[b.trim()]=1);
+
+  for(let i=0;i<total;i++){
+    let batch=batches[i%batches.length].trim();
+    let num=counters[batch]++;
+    arr.push(batch+String(num).padStart(3,'0'));
+  }
+
+  let index=0;
+  let html="";
+
+  for(let r=1;r<=roomsCount;r++){
+
+    html+=`
+    <div class="header">
+      <h2>${college}</h2>
+      <p>Subject: ${subjectVal}</p>
+      <p>Date: ${dateVal}</p>
+      <h3>Room ${r}</h3>
+    </div>
+    <table>
+    `;
+
+    let cols=5;
+    let rows=Math.ceil(benchesCount/cols);
+
+    for(let i=0;i<rows;i++){
+      html+="<tr>";
+      for(let j=0;j<cols;j++){
+        html+= index<arr.length ? `<td>${arr[index++]}</td>` : "<td></td>";
+      }
+      html+="</tr>";
+    }
+
+    html+=`
+    </table>
+    <p>Invigilator Signature: __________</p>
+    <div class="page-break"></div>
+    `;
+  }
+
+  printArea.innerHTML=html;
+  printArea.style.display="block";
+
+  window.print();
+
+  printArea.style.display="none";
+}
+
+/* PDF */
+function exportPDF(){
+  printTable();
+  html2canvas(printArea).then(canvas=>{
+    const { jsPDF } = window.jspdf;
+    let pdf=new jsPDF();
+    let img=canvas.toDataURL("image/png");
+    pdf.addImage(img,"PNG",0,0,210,290);
+    pdf.save("Seating.pdf");
+  });
+}
+
+/* INPUT HELPERS */
+function collegeInput(){return document.getElementById("college").value||"College";}
+function subjectInput(){return document.getElementById("subject").value||"Subject";}
+function dateInput(){return document.getElementById("examDate").value||new Date().toLocaleDateString();}
+
+</script>
+
+</body>
+</html>
